@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rack.hpp"
-#include <fftw3.h>  // Substitui kissfft/kiss_fftr.h
+#include <fftw3.h>  
 
 using namespace rack;
 
@@ -56,7 +56,6 @@ struct SpectroFXModule : Module {
     fftwf_plan pInverse = nullptr;
     float* fftwIn = nullptr;                // Buffer de entrada para FFT
     fftwf_complex* fftwOut = nullptr;       // Buffer de saída da FFT
-    // Observação: Para FFT real->complex 1D, tamanho de fftwOut é (N/2 + 1)
 
     // Parâmetros
     float blurAmount = 1.f;

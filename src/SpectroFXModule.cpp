@@ -52,7 +52,7 @@ void SpectroFXModule::initFFT() {
     fftwOut = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * (N/2 + 1));
 
     // Cria planos (forward: real->complex, inverse: complex->real)
-    // Usamos FFTW_ESTIMATE para simplificar (melhor performance com FFTW_MEASURE, mas mais lento na init)
+    // Uso de FFTW_ESTIMATE para simplificar (melhor performance com FFTW_MEASURE, mas mais lento na init)
     pForward = fftwf_plan_dft_r2c_1d(N, fftwIn, fftwOut, FFTW_ESTIMATE);
     pInverse = fftwf_plan_dft_c2r_1d(N, fftwOut, fftwIn, FFTW_ESTIMATE);
 }
@@ -107,9 +107,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             fftReal[k] = magnitude[k] * std::cos(phase[k]);
             fftImag[k] = magnitude[k] * std::sin(phase[k]);
         }
-        // Lembre-se: para FFT real, a parte k>bins-1 é "espelhada" no array complexo,
-        // mas com FFTW também existe um layout específico. Aqui estamos simplificando.
-
+       
         // ISTFT
         doISTFT();
 
@@ -118,7 +116,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             overlapAddBuffer[i] += outBuffer[i];
         }
 
-        // Sai uma amostra (exemplo didático)
+        // Sai uma amostra 
         float out = overlapAddBuffer[0];
         overlapAddBuffer.erase(overlapAddBuffer.begin());
         overlapAddBuffer.push_back(0.f);
@@ -147,8 +145,7 @@ void SpectroFXModule::doSTFT() {
         fftReal[k] = fftwOut[k][0];
         fftImag[k] = fftwOut[k][1];
     }
-    // Se quiser armazenar a parte "espelhada" (k>bins-1), terá que reconstruir
-    // manualmente de acordo com as convenções da FFT real->complex.
+    
 }
 
 void SpectroFXModule::doISTFT() {
@@ -158,15 +155,11 @@ void SpectroFXModule::doISTFT() {
         fftwOut[k][0] = fftReal[k]; // real
         fftwOut[k][1] = fftImag[k]; // imag
     }
-    // Se necessário, preencher o espelhamento (para k>bins-1), mas com
-    // `fftw_plan_dft_c2r_1d()` real->complex, normalmente não é estritamente preciso
-    // pois o FFTW se apoia no layout "halfcomplex" interno. Depende do caso.
-
+   
     // Executa plano inverse
     fftwf_execute(pInverse);
 
     // fftwIn agora contém o sinal no domínio do tempo, mas sem normalização
-    // Por padrão, a FFT não divide por N
     for (int i = 0; i < N; i++) {
         // outBuffer = fftwIn / N
         outBuffer[i] = fftwIn[i] / float(N);
