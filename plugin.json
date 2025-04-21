@@ -16,8 +16,8 @@
     {
       "slug": "SpectroFX",
       "name": "SpectroFX",
-      "description": "",
-      "tags": []
+      "description": "Plugin com STFT, manipulação de espectro e FFTW",
+      "tags": ["Effect", "Spectral"]
     }
   ]
 }

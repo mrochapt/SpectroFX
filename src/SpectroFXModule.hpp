@@ -1,7 +1,8 @@
 #pragma once
 
 #include "rack.hpp"
-#include <fftw3.h>  
+#include <vector>
+#include <fftw3.h>  // FFTW single precision
 
 using namespace rack;
 
@@ -9,7 +10,7 @@ extern Plugin* pluginInstance;
 
 struct SpectroFXModule : Module {
     enum ParamIds {
-        BLUR_AMOUNT_PARAM,
+        BLUR_AMOUNT_PARAM, // Nosso knob para blur
         NUM_PARAMS
     };
     enum InputIds {
@@ -24,41 +25,44 @@ struct SpectroFXModule : Module {
         NUM_LIGHTS
     };
 
-    // Configurações STFT
+    // Config STFT
     static const int N = 1024;
     static const int overlapFactor = 4;
     static const int hopSize = N / overlapFactor;
 
-    // Construtor e destrutor
-    SpectroFXModule();
-    ~SpectroFXModule() override;
-
-    void process(const ProcessArgs& args) override;
-
-    // Buffers
+    // Buffers de tempo
     float window[N];
-    float inBuffer[N];   // Bloco de entrada (time-domain)
-    float outBuffer[N];  // Resultado da IFFT (time-domain)
+    float inBuffer[N];   // Bloco de entrada
+    float outBuffer[N];  // Bloco de saída (IFFT)
 
+    // FIFO para armazenar amostras de entrada
     std::vector<float> inputFIFO;
     int writeIndex = 0;
     int readIndex = 0;
     int samplesInFIFO = 0;
 
-    std::vector<float> overlapAddBuffer; // Buffer para overlap-add
+    // Overlap-add buffer
+    std::vector<float> overlapAddBuffer;
 
-    // Espectro
-    std::vector<float> fftReal; // Vamos armazenar aqui após a FFT
+    // Arrays para espectro (real e imag)
+    std::vector<float> fftReal;
     std::vector<float> fftImag;
 
     // FFTW
     fftwf_plan pForward = nullptr;
     fftwf_plan pInverse = nullptr;
-    float* fftwIn = nullptr;                // Buffer de entrada para FFT
-    fftwf_complex* fftwOut = nullptr;       // Buffer de saída da FFT
+    float* fftwIn = nullptr;                // buffer time-domain p/ forward
+    fftwf_complex* fftwOut = nullptr;       // buffer freq-domain p/ forward
 
-    // Parâmetros
+    // Parâmetro do blur
     float blurAmount = 1.f;
+
+    // Construtor / Destrutor
+    SpectroFXModule();
+    ~SpectroFXModule() override;
+
+    // Chamado a cada ciclo de áudio (em blocos ou amostras, dependendo do Rack)
+    void process(const ProcessArgs& args) override;
 
     // Métodos auxiliares
     void initFFT();

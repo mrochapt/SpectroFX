@@ -2,21 +2,21 @@
 #include <cmath>
 #include <algorithm>
 
-// Construtor
 SpectroFXModule::SpectroFXModule() {
+    // Configura parâmetros, entradas, saídas, etc.
     config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
     configParam(BLUR_AMOUNT_PARAM, 0.f, 10.f, 1.f, "Blur Amount");
 
-    // Aloca buffers de uso geral
-    inputFIFO.resize(N * 4, 0.f); // buffer circular maior que N
+    // Aloca buffer FIFO de entrada
+    inputFIFO.resize(N * 4, 0.f); // um tamanho maior que N
     overlapAddBuffer.resize(N, 0.f);
 
-    // janelas (Hann)
+    // Janela (Hann)
     for (int i = 0; i < N; i++) {
         window[i] = 0.5f * (1.f - std::cos((2.f * M_PI * i) / (N - 1)));
     }
 
-    // Vetores que vão guardar a parte real/imag após a FFT
+    // Vetores que vão receber o espectro
     fftReal.resize(N, 0.f);
     fftImag.resize(N, 0.f);
 
@@ -24,8 +24,8 @@ SpectroFXModule::SpectroFXModule() {
     initFFT();
 }
 
-// Destrutor: destruir planos e liberar memória FFTW
 SpectroFXModule::~SpectroFXModule() {
+    // Destrói planos e libera memória FFTW
     if (pForward) {
         fftwf_destroy_plan(pForward);
         pForward = nullptr;
@@ -45,49 +45,45 @@ SpectroFXModule::~SpectroFXModule() {
 }
 
 void SpectroFXModule::initFFT() {
-    // Aloca memória para FFTW
-    // fftwIn é um array real de tamanho N
-    // fftwOut é um array complexo de tamanho (N/2 + 1)
+    // Aloca buffers para FFTW
     fftwIn = (float*) fftwf_malloc(sizeof(float) * N);
     fftwOut = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * (N/2 + 1));
 
-    // Cria planos (forward: real->complex, inverse: complex->real)
-    // Uso de FFTW_ESTIMATE para simplificar (melhor performance com FFTW_MEASURE, mas mais lento na init)
+    // Cria planos (forward e inverse)
     pForward = fftwf_plan_dft_r2c_1d(N, fftwIn, fftwOut, FFTW_ESTIMATE);
     pInverse = fftwf_plan_dft_c2r_1d(N, fftwOut, fftwIn, FFTW_ESTIMATE);
 }
 
 void SpectroFXModule::process(const ProcessArgs& args) {
-    // Lê parâmetro de blur
+    // Lê o parâmetro do knob
     blurAmount = params[BLUR_AMOUNT_PARAM].getValue();
 
-    // Captura áudio de entrada
+    // Lê a amostra de entrada (mono)
     float in = 0.f;
     if (inputs[AUDIO_IN].isConnected()) {
         in = inputs[AUDIO_IN].getVoltage();
     }
 
-    // Escreve no FIFO circular
+    // Coloca no FIFO
     inputFIFO[writeIndex] = in;
     writeIndex = (writeIndex + 1) % inputFIFO.size();
     samplesInFIFO++;
 
-    // Se temos ao menos N amostras, podemos processar um bloco
+    // Se tivermos ao menos N amostras disponíveis, processamos
     if (samplesInFIFO >= N) {
-        // Copia N amostras para inBuffer, aplicando a janela
+        // Copiar N amostras para inBuffer, aplicando janela
         for (int i = 0; i < N; i++) {
             int idx = (readIndex + i) % inputFIFO.size();
             inBuffer[i] = inputFIFO[idx] * window[i];
         }
-
-        // Avança no FIFO em hopSize
+        // Avança readIndex
         readIndex = (readIndex + hopSize) % inputFIFO.size();
         samplesInFIFO -= hopSize;
 
         // STFT
         doSTFT();
 
-        // Extração de magnitude e fase
+        // Extrai magnitude e fase
         int bins = N/2 + 1;
         std::vector<float> magnitude(bins);
         std::vector<float> phase(bins);
@@ -96,10 +92,10 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             float r = fftReal[k];
             float im = fftImag[k];
             magnitude[k] = std::sqrt(r*r + im*im);
-            phase[k]     = std::atan2(im, r);
+            phase[k] = std::atan2(im, r);
         }
 
-        // Aplica blur 1D na frequência
+        // Aplica blur (1D em frequência)
         blurSpectrum(magnitude, bins, blurAmount);
 
         // Reconstrói fftReal/fftImag
@@ -107,7 +103,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             fftReal[k] = magnitude[k] * std::cos(phase[k]);
             fftImag[k] = magnitude[k] * std::sin(phase[k]);
         }
-       
+
         // ISTFT
         doISTFT();
 
@@ -116,15 +112,17 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             overlapAddBuffer[i] += outBuffer[i];
         }
 
-        // Sai uma amostra 
+        // Nesse exemplo simples, mandamos a primeira amostra do overlapAddBuffer pro output
         float out = overlapAddBuffer[0];
+
+        // Remove a primeira amostra e empurra
         overlapAddBuffer.erase(overlapAddBuffer.begin());
         overlapAddBuffer.push_back(0.f);
 
         outputs[AUDIO_OUT].setVoltage(out);
     }
     else {
-        // Se não temos bloco completo, sai 0
+        // Ainda não temos bloco suficiente, sai 0
         outputs[AUDIO_OUT].setVoltage(0.f);
     }
 }
@@ -135,39 +133,37 @@ void SpectroFXModule::doSTFT() {
         fftwIn[i] = inBuffer[i];
     }
 
-    // Executa plano forward
+    // Executa FFT
     fftwf_execute(pForward);
 
-    // Copia resultados de fftwOut para fftReal/fftImag
-    // fftwOut[k][0] => parte real, fftwOut[k][1] => parte imag
+    // Copia resultado em fftReal/fftImag
     int bins = N/2 + 1;
     for (int k = 0; k < bins; k++) {
-        fftReal[k] = fftwOut[k][0];
-        fftImag[k] = fftwOut[k][1];
+        fftReal[k] = fftwOut[k][0]; // real
+        fftImag[k] = fftwOut[k][1]; // imag
     }
-    
 }
 
 void SpectroFXModule::doISTFT() {
-    // Copia fftReal/fftImag de volta para fftwOut
+    // Copia de fftReal/fftImag para fftwOut
     int bins = N/2 + 1;
     for (int k = 0; k < bins; k++) {
-        fftwOut[k][0] = fftReal[k]; // real
-        fftwOut[k][1] = fftImag[k]; // imag
+        fftwOut[k][0] = fftReal[k];
+        fftwOut[k][1] = fftImag[k];
     }
-   
-    // Executa plano inverse
+
+    // Executa IFFT
     fftwf_execute(pInverse);
 
-    // fftwIn agora contém o sinal no domínio do tempo, mas sem normalização
+    // fftwIn agora contém o sinal tempo, mas sem normalizar
     for (int i = 0; i < N; i++) {
-        // outBuffer = fftwIn / N
         outBuffer[i] = fftwIn[i] / float(N);
     }
 }
 
 void SpectroFXModule::blurSpectrum(std::vector<float>& magnitude, int bins, float amount) {
-    int radius = std::min((int)amount, bins-1);
+    // Blur 1D simples com média de vizinhos
+    int radius = std::min((int)amount, bins - 1);
     std::vector<float> temp(magnitude.size());
 
     for (int k = 0; k < bins; k++) {
@@ -180,7 +176,7 @@ void SpectroFXModule::blurSpectrum(std::vector<float>& magnitude, int bins, floa
                 count++;
             }
         }
-        temp[k] = (count > 0) ? sum / (float)count : magnitude[k];
+        temp[k] = (count > 0) ? sum / count : magnitude[k];
     }
 
     magnitude = temp;

@@ -1,9 +1,10 @@
 #include "SpectroFXModule.hpp"
+#include "SpectroFXWidget.hpp"
 
-Plugin* pluginInstance;
+Plugin* pluginInstance = nullptr;
 
 void init(Plugin* p) {
     pluginInstance = p;
-    // Registra o módulo (ainda falta o widget e etc.)
-    p->addModel(createModel<SpectroFXModule, ModuleWidget>("SpectroFXModule"));
+   
+    p->addModel(createModel<SpectroFXModule, SpectroFXModuleWidget>("SpectroFXModule"));
 }

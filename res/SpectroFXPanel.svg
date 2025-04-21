@@ -1,0 +1,11 @@
+<svg
+    width="30.48mm"
+    height="128.5mm"
+    viewBox="0 0 30.48 128.5"
+    xmlns="http://www.w3.org/2000/svg">
+  <!-- Fundo cinza escuro -->
+  <rect x="0" y="0" width="30.48" height="128.5" fill="#333333" />
+  
+  <!-- Texto simples -->
+  <text x="15" y="15" font-size="5" fill="#ffffff" text-anchor="middle">SpectroFX</text>
+</svg>
