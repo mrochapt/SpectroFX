@@ -1,0 +1,16 @@
+{
+  "slug": "SpectroFXModule",
+  "name": "SpctroFX",
+  "version": "2.0.0",
+  "license": "GPL-3.0-or-later",
+  "brand": "SpectroFX",
+  "author": "Manuel Rocha",
+  "modules": [
+    {
+      "slug": "SpectroFXModule",
+      "name": "SpectroFX Module",
+      "description": "Um módulo simples de entrada e saída de áudio",
+      "tags": ["Utility", "Audio"]
+    }
+  ]
+}
