@@ -1,8 +1,7 @@
 PLUGIN_NAME := SpectroFX
-RACK_DIR ?= ../..
+RACK_DIR ?= ../Rack-SDK
 
-# Add .cpp files to the build
 SOURCES += $(wildcard src/*.cpp)
 
-# Include the Rack plugin Makefile framework
 include $(RACK_DIR)/plugin.mk
+LDFLAGS += -lfftw3
