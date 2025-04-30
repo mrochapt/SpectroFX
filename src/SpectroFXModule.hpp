@@ -1,72 +1,56 @@
 #pragma once
-
-#include "rack.hpp"
-#include <vector>
-#include <fftw3.h>  // FFTW single precision
+#include "rack.hpp" // VCV Rack SDK
+#include <fftw3.h> // Biblioteca para cálculo da FFT
 
 using namespace rack;
 
-extern Plugin* pluginInstance;
-
-struct SpectroFXModule : Module {
+// Definição do módulo SpectroFX
+struct SpectroFXModule : Module { // Enumerações para portas e controlos
     enum ParamIds {
-        BLUR_AMOUNT_PARAM, // Nosso knob para blur
         NUM_PARAMS
     };
     enum InputIds {
-        AUDIO_IN,
+        AUDIO_INPUT_1,
+        AUDIO_INPUT_2,
         NUM_INPUTS
     };
     enum OutputIds {
-        AUDIO_OUT,
+        AUDIO_OUTPUT_1,
+        AUDIO_OUTPUT_2,
         NUM_OUTPUTS
     };
     enum LightIds {
         NUM_LIGHTS
     };
 
-    // Config STFT
-    static const int N = 1024;
-    static const int overlapFactor = 4;
-    static const int hopSize = N / overlapFactor;
+    static constexpr int N = 512;  
 
-    // Buffers de tempo
-    float window[N];
-    float inBuffer[N];   // Bloco de entrada
-    float outBuffer[N];  // Bloco de saída (IFFT)
+    std::vector<double> inputBuffer;
+    int bufferIndex = 0;
 
-    // FIFO para armazenar amostras de entrada
-    std::vector<float> inputFIFO;
-    int writeIndex = 0;
-    int readIndex = 0;
-    int samplesInFIFO = 0;
+    double input[N] = {};   // Buffer para armazenar as amostras de entrada (FFT real)
+    fftw_complex output[N/2 + 1] = {}; // Vetor de saída FFT com componentes complexas (real + imag)
+    fftw_plan fftPlan = nullptr; // Plano FFTW otimizado para execução rápida
 
-    // Overlap-add buffer
-    std::vector<float> overlapAddBuffer;
+    SpectroFXModule() {
+        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+        inputBuffer.resize(N, 0.0);
+        fftPlan = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);
+    }
 
-    // Arrays para espectro (real e imag)
-    std::vector<float> fftReal;
-    std::vector<float> fftImag;
+    ~SpectroFXModule() {
+        if (fftPlan) {
+            fftw_destroy_plan(fftPlan);
+        }
+    }
 
-    // FFTW
-    fftwf_plan pForward = nullptr;
-    fftwf_plan pInverse = nullptr;
-    float* fftwIn = nullptr;                // buffer time-domain p/ forward
-    fftwf_complex* fftwOut = nullptr;       // buffer freq-domain p/ forward
-
-    // Parâmetro do blur
-    float blurAmount = 1.f;
-
-    // Construtor / Destrutor
-    SpectroFXModule();
-    ~SpectroFXModule() override;
-
-    // Chamado a cada ciclo de áudio (em blocos ou amostras, dependendo do Rack)
-    void process(const ProcessArgs& args) override;
-
-    // Métodos auxiliares
-    void initFFT();
-    void doSTFT();
-    void doISTFT();
-    void blurSpectrum(std::vector<float>& magnitude, int bins, float amount);
+    void process(const ProcessArgs& args) override {
+        double in = inputs[AUDIO_INPUT_1].getVoltage();
+        outputs[AUDIO_OUTPUT_1].setVoltage(in);
+        outputs[AUDIO_OUTPUT_2].setVoltage(inputs[AUDIO_INPUT_2].getVoltage());
+        inputBuffer[bufferIndex] = in;
+        bufferIndex = (bufferIndex + 1) % N;
+    }
 };
+
+extern Model* modelSpectroFXModule;

@@ -1,10 +1,10 @@
+#include "plugin.hpp"
 #include "SpectroFXModule.hpp"
-#include "SpectroFXWidget.hpp"
 
-Plugin* pluginInstance = nullptr;
+Plugin* pluginInstance; // Ponteiro global para o plugin
 
+// Função obrigatória de inicialização do plugin
 void init(Plugin* p) {
-    pluginInstance = p;
-   
-    p->addModel(createModel<SpectroFXModule, SpectroFXModuleWidget>("SpectroFXModule"));
+    pluginInstance = p; // Guarda instância do plugin
+    p->addModel(modelSpectroFXModule); // Regista o modelo SpectroFX
 }
