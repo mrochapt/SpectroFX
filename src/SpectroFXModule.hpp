@@ -1,56 +1,63 @@
 #pragma once
-#include "rack.hpp" // VCV Rack SDK
-#include <fftw3.h> // Biblioteca para cálculo da FFT
+
+#include "rack.hpp"          // Inclusão do header principal do VCV Rack
+#include <fftw3.h>           // Biblioteca FFTW para FFT/IFFT
+#include <opencv2/opencv.hpp> // OpenCV para manipulação de imagem
+#include <random>            // Geração de números aleatórios (futuro: efeitos com fase aleatória)
 
 using namespace rack;
 
-// Definição do módulo SpectroFX
-struct SpectroFXModule : Module { // Enumerações para portas e controlos
+// Constantes principais do módulo
+static constexpr int N = 512;                          // Tamanho do bloco FFT
+static constexpr int SPECTRO_WIDTH = N / 2 + 1;        // Largura do espectrograma (bins FFT válidos)
+static constexpr int SPECTRO_HEIGHT = 100;             // Altura do espectrograma (nº de linhas históricas)
+
+// Classe principal do módulo
+struct SpectroFXModule : Module {
+    // Enumeração dos parâmetros (knobs, switches, etc)
     enum ParamIds {
+        EFFECT_TYPE_PARAM,   // Selector de efeito
         NUM_PARAMS
     };
+    // Enumeração das entradas do módulo
     enum InputIds {
-        AUDIO_INPUT_1,
-        AUDIO_INPUT_2,
+        AUDIO_INPUT_1,      // Entrada de áudio principal
+        AUDIO_INPUT_2,      // (Opcional, não usado atualmente)
         NUM_INPUTS
     };
+    // Enumeração das saídas do módulo
     enum OutputIds {
-        AUDIO_OUTPUT_1,
-        AUDIO_OUTPUT_2,
+        AUDIO_OUTPUT_1,     // Saída processada (FFT/IFFT)
+        AUDIO_OUTPUT_2,     // Saída bypass (direta)
         NUM_OUTPUTS
     };
     enum LightIds {
         NUM_LIGHTS
     };
 
-    static constexpr int N = 512;  
+    // Buffers de áudio e espectro
+    double inputBuffer[N];               // Buffer circular de entrada de áudio
+    double outputBuffer[N];              // Buffer circular de saída (depois da IFFT)
+    double magnitude[SPECTRO_WIDTH];     // Magnitude dos bins FFT (para espectrograma)
+    int bufferIndex = 0;                 // Posição atual de escrita no buffer de entrada
+    int outputIndex = 0;                 // Posição atual de leitura no buffer de saída
 
-    std::vector<double> inputBuffer;
-    int bufferIndex = 0;
+    // Buffers e planos FFTW (bins válidos apenas SPECTRO_WIDTH)
+    fftw_complex fftOut[SPECTRO_WIDTH];  // Saída da FFT
+    fftw_complex fftIn[SPECTRO_WIDTH];   // Entrada da IFFT
+    fftw_plan fftPlan;                   // Plano FFT real->complexo
+    fftw_plan ifftPlan;                  // Plano IFFT complex->real
 
-    double input[N] = {};   // Buffer para armazenar as amostras de entrada (FFT real)
-    fftw_complex output[N/2 + 1] = {}; // Vetor de saída FFT com componentes complexas (real + imag)
-    fftw_plan fftPlan = nullptr; // Plano FFTW otimizado para execução rápida
+    // Janela de Hanning para suavizar artefactos de FFT
+    double hanning[N];
+    
+    // Espectrograma (imagem OpenCV)
+    cv::Mat spectrogramImage = cv::Mat::zeros(SPECTRO_HEIGHT, SPECTRO_WIDTH, CV_8UC1); // Imagem de espectrograma (acumulada)
+    cv::Mat processedImage;             // Imagem após efeitos
+    std::mt19937 rng{std::random_device{}()}; // Gerador aleatório (para efeitos futuros)
 
-    SpectroFXModule() {
-        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        inputBuffer.resize(N, 0.0);
-        fftPlan = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);
-    }
+    SpectroFXModule();                  // Construtor
+    ~SpectroFXModule();                 // Destrutor
 
-    ~SpectroFXModule() {
-        if (fftPlan) {
-            fftw_destroy_plan(fftPlan);
-        }
-    }
-
-    void process(const ProcessArgs& args) override {
-        double in = inputs[AUDIO_INPUT_1].getVoltage();
-        outputs[AUDIO_OUTPUT_1].setVoltage(in);
-        outputs[AUDIO_OUTPUT_2].setVoltage(inputs[AUDIO_INPUT_2].getVoltage());
-        inputBuffer[bufferIndex] = in;
-        bufferIndex = (bufferIndex + 1) % N;
-    }
+    void process(const ProcessArgs& args) override; // Função principal de processamento de áudio
 };
-
-extern Model* modelSpectroFXModule;

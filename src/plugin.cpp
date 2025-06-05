@@ -1,10 +1,11 @@
 #include "plugin.hpp"
 #include "SpectroFXModule.hpp"
 
-Plugin* pluginInstance; // Ponteiro global para o plugin
+// Ponteiro global para a instância do plugin.
+Plugin* pluginInstance;
 
-// Função obrigatória de inicialização do plugin
+// Função obrigatória chamada pelo Rack ao carregar o plugin.
 void init(Plugin* p) {
-    pluginInstance = p; // Guarda instância do plugin
-    p->addModel(modelSpectroFXModule); // Regista o modelo SpectroFX
+    pluginInstance = p;                         // Armazena a instância do plugin globalmente
+    p->addModel(modelSpectroFXModule);          // Regista o módulo "SpectroFX" no sistema do VCV Rack
 }

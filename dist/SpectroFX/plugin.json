@@ -1,0 +1,16 @@
+{
+  "slug": "SpectroFX",
+  "name": "SpectroFX",
+  "version": "2.0.0",
+  "license": "GPL-3.0-or-later",
+  "brand": "SpectroFX",
+  "author": "Manuel Rocha",
+  "modules": [
+    {
+      "slug": "SpectroFX",
+      "name": "SpectroFX",
+      "description": "Espectrograma FFT com 2 entradas/saídas",
+      "tags": ["Visual", "Utility", "FFT"]
+    }
+  ]
+}
