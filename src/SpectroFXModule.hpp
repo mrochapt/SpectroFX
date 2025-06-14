@@ -1,75 +1,80 @@
 #pragma once
 
-#include "rack.hpp" // VCV Rack SDK
-#include <fftw3.h>  // Biblioteca externa para cálculo da FFT (Fast Fourier Transform)
+#include "rack.hpp"
+#include <fftw3.h>
 
 using namespace rack;
 
-// Classe principal que representa o módulo SpectroFX no VCV Rack
+/**
+ * Classe principal do módulo SpectroFX.
+ * Aplica vários efeitos espectrais (imagem) controlados por knobs graduais.
+ */
 struct SpectroFXModule : Module {
-    // Identificadores para organização de parâmetros
+    // Enumeração dos parâmetros de controlo (knobs)
     enum ParamIds {
-        NUM_PARAMS  
+        BLUR_PARAM,
+        SHARPEN_PARAM,
+        EDGE_PARAM,
+        EMBOSS_PARAM,
+        MIRROR_PARAM,
+        GATE_PARAM,     
+        STRETCH_PARAM,  
+        NUM_PARAMS
     };
 
-    // Identificadores das portas de entrada
+    // Entradas de áudio
     enum InputIds {
-        AUDIO_INPUT_1,
-        AUDIO_INPUT_2,
+        AUDIO_INPUT, // Única entrada de áudio
         NUM_INPUTS
     };
 
-    // Identificadores das portas de saída
+    // Saídas de áudio
     enum OutputIds {
-        AUDIO_OUTPUT_1,
-        AUDIO_OUTPUT_2,
+        BYPASS_OUTPUT,    // Saída de bypass (áudio sem processar)
+        PROCESSED_OUTPUT, // Saída processada
         NUM_OUTPUTS
     };
 
-    // Identificadores das luzes (não usadas neste módulo)
+    // (Não usamos LEDs neste layout)
     enum LightIds {
         NUM_LIGHTS
     };
 
-    // Número de amostras da FFT (2^9 = 512)
+    // Constante: tamanho da janela FFT
     static const int N = 512;
 
-    // Buffer usado para preparar dados para FFT
-    double input[N];
+    // Buffers para processamento FFT/IFFT
+    double input[N] = {0.0};                // Buffer de amostras para FFTW (entrada)
+    fftw_complex output[N / 2 + 1] = {};    // Buffer de saída FFTW (domínio da frequência)
+    double inputBuffer[N] = {0.0};          // Buffer circular para janela de entrada
+    double processedBuffer[N] = {0.0};      // Buffer circular para janela de saída
+    int bufferIndex = 0;                    // Posição atual no buffer circular
+    int readPtr = 0;                        // Ponteiro de leitura do output processado
 
-    // Resultado da FFT: vetor de valores complexos (real + imag)
-    fftw_complex output[N / 2 + 1];
-
-    // Buffer circular para armazenar amostras de entrada em tempo real
-    double inputBuffer[N];
-
-    // Índice de escrita no buffer circular
-    int bufferIndex = 0;
-
-    // Plano optimizado FFTW (pré-computado)
+    // Planos FFT/IFFT (fftw)
     fftw_plan fftPlan = nullptr;
+    fftw_plan ifftPlan = nullptr;
 
-    // Construtor do módulo
+    // Construtor: inicializa parâmetros e planos FFT
     SpectroFXModule() {
-        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);            // Configura portas
-        fftPlan = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);    // Cria plano FFT
+        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+        configParam(BLUR_PARAM,     0.f, 1.f, 0.f, "Blur");
+        configParam(SHARPEN_PARAM,  0.f, 1.f, 0.f, "Sharpen");
+        configParam(EDGE_PARAM,     0.f, 1.f, 0.f, "Edge Enhance");
+        configParam(EMBOSS_PARAM,   0.f, 1.f, 0.f, "Emboss");
+        configParam(GATE_PARAM, 0.f, 1.f, 0.f, "Spectral Gate");
+        configParam(MIRROR_PARAM,   0.f, 1.f, 0.f, "Mirror");
+        configParam(STRETCH_PARAM, 0.f, 1.f, 0.5f, "Spectral Stretch");
+        fftPlan  = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);
+        ifftPlan = fftw_plan_dft_c2r_1d(N, output, input, FFTW_ESTIMATE);
     }
 
-    // Destrutor — liberta recursos do plano FFT
+    // Destrutor: liberta planos FFTW
     ~SpectroFXModule() {
         fftw_destroy_plan(fftPlan);
+        fftw_destroy_plan(ifftPlan);
     }
 
-    // Função principal chamada a cada ciclo de processamento
-    void process(const ProcessArgs& args) override {
-        // Copia entradas de áudio e transmite às saídas (bypass simples)
-        for (int i = 0; i < 2; i++) {
-            float in = inputs[AUDIO_INPUT_1 + i].getVoltage();
-            outputs[AUDIO_OUTPUT_1 + i].setVoltage(in);
-
-            // Armazena sinal no buffer circular
-            inputBuffer[bufferIndex] = in;
-            bufferIndex = (bufferIndex + 1) % N;
-        }
-    }
+    // Função principal de processamento de áudio
+    void process(const ProcessArgs& args) override;
 };
