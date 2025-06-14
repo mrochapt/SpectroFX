@@ -1,64 +1,75 @@
 #pragma once
 
-#include "rack.hpp"
-#include <fftw3.h>
+#include "rack.hpp" // VCV Rack SDK
+#include <fftw3.h>  // Biblioteca externa para cálculo da FFT (Fast Fourier Transform)
 
 using namespace rack;
 
+// Classe principal que representa o módulo SpectroFX no VCV Rack
 struct SpectroFXModule : Module {
+    // Identificadores para organização de parâmetros
     enum ParamIds {
-        BLUR_PARAM,
-        SHARPEN_PARAM,
-        EFFECT0_PARAM,
-        EFFECT1_PARAM,
-        EFFECT2_PARAM,
-        EFFECT3_PARAM,
-        EFFECT4_PARAM,
-        EFFECT5_PARAM,
-        NUM_PARAMS
+        NUM_PARAMS  
     };
 
+    // Identificadores das portas de entrada
     enum InputIds {
-        AUDIO_INPUT,
+        AUDIO_INPUT_1,
+        AUDIO_INPUT_2,
         NUM_INPUTS
     };
 
+    // Identificadores das portas de saída
     enum OutputIds {
-        BYPASS_OUTPUT,
-        PROCESSED_OUTPUT,
+        AUDIO_OUTPUT_1,
+        AUDIO_OUTPUT_2,
         NUM_OUTPUTS
     };
 
+    // Identificadores das luzes (não usadas neste módulo)
     enum LightIds {
         NUM_LIGHTS
     };
 
+    // Número de amostras da FFT (2^9 = 512)
     static const int N = 512;
 
-    double input[N] = {0.0};
-    fftw_complex output[N / 2 + 1] = {};
-    double inputBuffer[N] = {0.0};
-    double processedBuffer[N] = {0.0};
+    // Buffer usado para preparar dados para FFT
+    double input[N];
+
+    // Resultado da FFT: vetor de valores complexos (real + imag)
+    fftw_complex output[N / 2 + 1];
+
+    // Buffer circular para armazenar amostras de entrada em tempo real
+    double inputBuffer[N];
+
+    // Índice de escrita no buffer circular
     int bufferIndex = 0;
-    int readPtr = 0;
 
+    // Plano optimizado FFTW (pré-computado)
     fftw_plan fftPlan = nullptr;
-    fftw_plan ifftPlan = nullptr;
 
+    // Construtor do módulo
     SpectroFXModule() {
-        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        configParam(BLUR_PARAM,    0.f, 1.f, 0.f, "Blur");
-        configParam(SHARPEN_PARAM, 0.f, 1.f, 0.f, "Sharpen");
-        for (int i = EFFECT0_PARAM; i <= EFFECT5_PARAM; ++i)
-            configParam(i, 0.f, 1.f, i == EFFECT0_PARAM ? 1.f : 0.f, std::string("Effect ") + std::to_string(i - EFFECT0_PARAM));
-        fftPlan  = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);
-        ifftPlan = fftw_plan_dft_c2r_1d(N, output, input, FFTW_ESTIMATE);
+        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);            // Configura portas
+        fftPlan = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);    // Cria plano FFT
     }
 
+    // Destrutor — liberta recursos do plano FFT
     ~SpectroFXModule() {
         fftw_destroy_plan(fftPlan);
-        fftw_destroy_plan(ifftPlan);
     }
 
-    void process(const ProcessArgs& args) override;
+    // Função principal chamada a cada ciclo de processamento
+    void process(const ProcessArgs& args) override {
+        // Copia entradas de áudio e transmite às saídas (bypass simples)
+        for (int i = 0; i < 2; i++) {
+            float in = inputs[AUDIO_INPUT_1 + i].getVoltage();
+            outputs[AUDIO_OUTPUT_1 + i].setVoltage(in);
+
+            // Armazena sinal no buffer circular
+            inputBuffer[bufferIndex] = in;
+            bufferIndex = (bufferIndex + 1) % N;
+        }
+    }
 };

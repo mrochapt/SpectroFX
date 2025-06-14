@@ -3,33 +3,30 @@
 #include "SpectroFXWidget.hpp"
 #include <opencv2/opencv.hpp>
 
+/**
+ * Função principal de processamento de áudio.
+ * Aplica FFT ao sinal de entrada, manipula o espectrograma com efeitos,
+ * reconstrói o áudio via IFFT e atualiza as saídas.
+ */
 void SpectroFXModule::process(const ProcessArgs& args) {
-    // Saída bypass direta
+    // Passa diretamente o áudio para o output BYPASS (não processado)
     float in = inputs[AUDIO_INPUT].isConnected() ? inputs[AUDIO_INPUT].getVoltage() : 0.f;
     outputs[BYPASS_OUTPUT].setVoltage(in);
 
-    // Buffer circular
+    // Escreve a amostra de entrada no buffer circular
     inputBuffer[bufferIndex] = in;
     bufferIndex = (bufferIndex + 1) % N;
 
-    // Efeito ativo (apenas um pode estar ON)
-    int effect = 0;
-    for (int i = 0; i < 6; ++i) {
-        if (params[EFFECT0_PARAM + i].getValue() > 0.5f)
-            effect = i;
-    }
-    // Forçar só um ativo
-    for (int i = 0; i < 6; ++i)
-        params[EFFECT0_PARAM + i].setValue(i == effect ? 1.f : 0.f);
-
-    // FFT e efeitos a cada janela
-    static cv::Mat frozenMag, frozenPhase;
+    // Só processa uma janela quando o buffer está cheio (block processing)
     if (bufferIndex == 0) {
+        // Preenche o buffer para a FFT
         for (int i = 0; i < N; i++)
             input[i] = inputBuffer[i];
+
+        // Executa a FFT
         fftw_execute(fftPlan);
 
-        // Magnitude/fase
+        // Extrai magnitude e fase para cada bin do espectro
         cv::Mat mag(1, N/2+1, CV_32F), phase(1, N/2+1, CV_32F);
         for (int i = 0; i < N/2+1; i++) {
             float re = output[i][0];
@@ -37,83 +34,111 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             mag.at<float>(0,i)   = std::sqrt(re*re + im*im);
             phase.at<float>(0,i) = std::atan2(im, re);
         }
+        // Guarda uma cópia da magnitude original (para blends)
+        cv::Mat origMag = mag.clone();
 
-        // Efeitos blur/sharpen
-        float blurAmt   = params[BLUR_PARAM].getValue();
-        float sharpAmt  = params[SHARPEN_PARAM].getValue();
+        // --------- EFEITOS GRADUAIS APLICADOS POR ORDEM ---------
+
+        // 1. Blur (Desfoque Gaussiano)
+        float blurAmt = params[BLUR_PARAM].getValue();
         if (blurAmt > 0.f)
-            cv::GaussianBlur(mag, mag, cv::Size(0,0), blurAmt*10.f);
+            cv::GaussianBlur(mag, mag, cv::Size(0,0), blurAmt * 12.0);
+
+        // 2. Sharpen (Aguçar)
+        float sharpAmt = params[SHARPEN_PARAM].getValue();
         if (sharpAmt > 0.f) {
+            cv::Mat sharp;
+            // Kernel clássico de Sharpen com ganho ajustável
             cv::Mat kernel = (cv::Mat_<float>(3,3) <<
                 0, -sharpAmt, 0,
                 -sharpAmt, 1+4*sharpAmt, -sharpAmt,
                 0, -sharpAmt, 0);
-            cv::filter2D(mag, mag, -1, kernel);
+            cv::filter2D(mag, sharp, -1, kernel);
+            // Blend gradual
+            mag = mag * (1.0f - sharpAmt) + sharp * sharpAmt;
         }
 
-        // Seleção do efeito extra via botões
-        switch (effect) {
-            case 1: { // Pixelate
-                cv::Mat tmp;
-                cv::resize(mag, tmp, cv::Size(8, 1), 0, 0, cv::INTER_NEAREST);
-                cv::resize(tmp, mag, cv::Size(mag.cols, mag.rows), 0, 0, cv::INTER_NEAREST);
-                break;
-            }
-            case 2: { // Gate
-                double maxv;
-                cv::minMaxLoc(mag, nullptr, &maxv);
-                for (int i = 0; i < mag.cols; i++)
-                    if (mag.at<float>(0,i) < 0.5 * maxv)
-                        mag.at<float>(0,i) = 0.0f;
-                break;
-            }
-            case 3: { // Invert
-                double maxv;
-                cv::minMaxLoc(mag, nullptr, &maxv);
-                for (int i = 0; i < mag.cols; i++)
-                    mag.at<float>(0,i) = maxv - mag.at<float>(0,i);
-                break;
-            }
-            case 4: { // Mirror
-                for (int i = 0; i < mag.cols/2; i++) {
-                    float tmp = mag.at<float>(0,i);
-                    mag.at<float>(0,i) = mag.at<float>(0,mag.cols-1-i);
-                    mag.at<float>(0,mag.cols-1-i) = tmp;
-                }
-                break;
-            }
-            case 5: { // Freeze
-                if (frozenMag.empty()) {
-                    frozenMag = mag.clone();
-                    frozenPhase = phase.clone();
-                }
-                mag = frozenMag.clone();
-                // phase = frozenPhase.clone(); // opcional: congelar fase
-                break;
-            }
-            default:
-                frozenMag.release();
-                frozenPhase.release();
-                break;
+        // 3. Edge Enhance (Realce de contornos)
+        float edgeAmt = params[EDGE_PARAM].getValue();
+        if (edgeAmt > 0.f) {
+            cv::Mat edge;
+            // Filtro Sobel: realça diferenças abruptas
+            cv::Sobel(mag, edge, CV_32F, 1, 1, 3);
+            mag = mag * (1.0f - edgeAmt) + edge * edgeAmt;
         }
 
-        // Reconstrução e IFFT
+        // 4. Emboss (Relevo)
+        float embossAmt = params[EMBOSS_PARAM].getValue();
+        if (embossAmt > 0.f) {
+            cv::Mat emboss;
+            // Kernel clássico de Emboss
+            cv::Mat kernel = (cv::Mat_<float>(3,3) <<
+                -2, -1, 0,
+                -1,  1, 1,
+                 0,  1, 2);
+            cv::filter2D(mag, emboss, -1, kernel);
+            mag = mag * (1.0f - embossAmt) + emboss * embossAmt;
+        }
+
+        // 5. Invert (Inverter espectro)
+        float invertAmt = params[INVERT_PARAM].getValue();
+        if (invertAmt > 0.f) {
+            double maxv;
+            cv::minMaxLoc(mag, nullptr, &maxv);
+            cv::Mat inv = maxv - mag; // Espectro invertido
+            mag = mag * (1.0f - invertAmt) + inv * invertAmt;
+        }
+
+        // 6. Mirror (Espelhar espectro)
+        float mirrorAmt = params[MIRROR_PARAM].getValue();
+        if (mirrorAmt > 0.f) {
+            cv::Mat mirrored = mag.clone();
+            int n = mag.cols;
+            // Espelha as colunas da matriz (espectro)
+            for (int i = 0; i < n/2; ++i) {
+                float tmp = mirrored.at<float>(0,i);
+                mirrored.at<float>(0,i) = mirrored.at<float>(0,n-1-i);
+                mirrored.at<float>(0,n-1-i) = tmp;
+            }
+            mag = mag * (1.0f - mirrorAmt) + mirrored * mirrorAmt;
+        }
+
+        // 7. Quantize (Quantização do espectro)
+        float quantizeAmt = params[QUANTIZE_PARAM].getValue();
+        if (quantizeAmt > 0.f) {
+            double minv, maxv;
+            cv::minMaxLoc(mag, &minv, &maxv);
+            int levels = 1 + (int)(quantizeAmt * 15); // de 1 (sem efeito) a 16 níveis (max effect)
+            // Quantização linear dos valores de magnitude
+            cv::Mat quantized = ((mag - minv) / (maxv - minv + 1e-9)) * (levels-1);
+            quantized = quantized.mul(1.0/(levels-1));
+            quantized = quantized * (maxv - minv) + minv;
+            mag = mag * (1.0f - quantizeAmt) + quantized * quantizeAmt;
+        }
+
+        // --------- RECONSTRUÇÃO DO ÁUDIO ---------
+        // Combina as magnitudes processadas com as fases originais,
+        // para cada bin da FFT, e faz IFFT para obter áudio
         for (int i = 0; i < N/2+1; i++) {
             float m = mag.at<float>(0,i);
             float ph = phase.at<float>(0,i);
             output[i][0] = m * std::cos(ph);
             output[i][1] = m * std::sin(ph);
         }
+        // Executa a IFFT
         fftw_execute(ifftPlan);
+
+        // Copia o áudio processado para o buffer de saída, normalizando
         for (int i = 0; i < N; ++i)
             processedBuffer[i] = input[i] / N;
-        readPtr = 0;
+        readPtr = 0; // Reinicia ponteiro de leitura
     }
 
+    // Atualiza saída processada sample a sample (interpolação entre blocos)
     float outProc = processedBuffer[readPtr];
     outputs[PROCESSED_OUTPUT].setVoltage(outProc);
     readPtr = (readPtr + 1) % N;
 }
 
-// Regista o módulo
+// Regista o módulo na framework do VCV Rack
 Model* modelSpectroFXModule = createModel<SpectroFXModule, SpectroFXModuleWidget>("SpectroFX");
