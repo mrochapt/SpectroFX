@@ -1,63 +1,80 @@
 #pragma once
 
-#include "rack.hpp"          // Inclusão do header principal do VCV Rack
-#include <fftw3.h>           // Biblioteca FFTW para FFT/IFFT
-#include <opencv2/opencv.hpp> // OpenCV para manipulação de imagem
-#include <random>            // Geração de números aleatórios (futuro: efeitos com fase aleatória)
+#include "rack.hpp"
+#include <fftw3.h>
 
 using namespace rack;
 
-// Constantes principais do módulo
-static constexpr int N = 512;                          // Tamanho do bloco FFT
-static constexpr int SPECTRO_WIDTH = N / 2 + 1;        // Largura do espectrograma (bins FFT válidos)
-static constexpr int SPECTRO_HEIGHT = 100;             // Altura do espectrograma (nº de linhas históricas)
-
-// Classe principal do módulo
+/**
+ * Classe principal do módulo SpectroFX.
+ * Aplica vários efeitos espectrais (imagem) controlados por knobs graduais.
+ */
 struct SpectroFXModule : Module {
-    // Enumeração dos parâmetros (knobs, switches, etc)
+    // Enumeração dos parâmetros de controlo (knobs)
     enum ParamIds {
-        EFFECT_TYPE_PARAM,   // Selector de efeito
+        BLUR_PARAM,
+        SHARPEN_PARAM,
+        EDGE_PARAM,
+        EMBOSS_PARAM,
+        MIRROR_PARAM,
+        GATE_PARAM,     
+        STRETCH_PARAM,  
         NUM_PARAMS
     };
-    // Enumeração das entradas do módulo
+
+    // Entradas de áudio
     enum InputIds {
-        AUDIO_INPUT_1,      // Entrada de áudio principal
-        AUDIO_INPUT_2,      // (Opcional, não usado atualmente)
+        AUDIO_INPUT, // Única entrada de áudio
         NUM_INPUTS
     };
-    // Enumeração das saídas do módulo
+
+    // Saídas de áudio
     enum OutputIds {
-        AUDIO_OUTPUT_1,     // Saída processada (FFT/IFFT)
-        AUDIO_OUTPUT_2,     // Saída bypass (direta)
+        BYPASS_OUTPUT,    // Saída de bypass (áudio sem processar)
+        PROCESSED_OUTPUT, // Saída processada
         NUM_OUTPUTS
     };
+
+    // (Não usamos LEDs neste layout)
     enum LightIds {
         NUM_LIGHTS
     };
 
-    // Buffers de áudio e espectro
-    double inputBuffer[N];               // Buffer circular de entrada de áudio
-    double outputBuffer[N];              // Buffer circular de saída (depois da IFFT)
-    double magnitude[SPECTRO_WIDTH];     // Magnitude dos bins FFT (para espectrograma)
-    int bufferIndex = 0;                 // Posição atual de escrita no buffer de entrada
-    int outputIndex = 0;                 // Posição atual de leitura no buffer de saída
+    // Constante: tamanho da janela FFT
+    static const int N = 512;
 
-    // Buffers e planos FFTW (bins válidos apenas SPECTRO_WIDTH)
-    fftw_complex fftOut[SPECTRO_WIDTH];  // Saída da FFT
-    fftw_complex fftIn[SPECTRO_WIDTH];   // Entrada da IFFT
-    fftw_plan fftPlan;                   // Plano FFT real->complexo
-    fftw_plan ifftPlan;                  // Plano IFFT complex->real
+    // Buffers para processamento FFT/IFFT
+    double input[N] = {0.0};                // Buffer de amostras para FFTW (entrada)
+    fftw_complex output[N / 2 + 1] = {};    // Buffer de saída FFTW (domínio da frequência)
+    double inputBuffer[N] = {0.0};          // Buffer circular para janela de entrada
+    double processedBuffer[N] = {0.0};      // Buffer circular para janela de saída
+    int bufferIndex = 0;                    // Posição atual no buffer circular
+    int readPtr = 0;                        // Ponteiro de leitura do output processado
 
-    // Janela de Hanning para suavizar artefactos de FFT
-    double hanning[N];
-    
-    // Espectrograma (imagem OpenCV)
-    cv::Mat spectrogramImage = cv::Mat::zeros(SPECTRO_HEIGHT, SPECTRO_WIDTH, CV_8UC1); // Imagem de espectrograma (acumulada)
-    cv::Mat processedImage;             // Imagem após efeitos
-    std::mt19937 rng{std::random_device{}()}; // Gerador aleatório (para efeitos futuros)
+    // Planos FFT/IFFT (fftw)
+    fftw_plan fftPlan = nullptr;
+    fftw_plan ifftPlan = nullptr;
 
-    SpectroFXModule();                  // Construtor
-    ~SpectroFXModule();                 // Destrutor
+    // Construtor: inicializa parâmetros e planos FFT
+    SpectroFXModule() {
+        config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+        configParam(BLUR_PARAM,     0.f, 1.f, 0.f, "Blur");
+        configParam(SHARPEN_PARAM,  0.f, 1.f, 0.f, "Sharpen");
+        configParam(EDGE_PARAM,     0.f, 1.f, 0.f, "Edge Enhance");
+        configParam(EMBOSS_PARAM,   0.f, 1.f, 0.f, "Emboss");
+        configParam(GATE_PARAM, 0.f, 1.f, 0.f, "Spectral Gate");
+        configParam(MIRROR_PARAM,   0.f, 1.f, 0.f, "Mirror");
+        configParam(STRETCH_PARAM, 0.f, 1.f, 0.5f, "Spectral Stretch");
+        fftPlan  = fftw_plan_dft_r2c_1d(N, input, output, FFTW_ESTIMATE);
+        ifftPlan = fftw_plan_dft_c2r_1d(N, output, input, FFTW_ESTIMATE);
+    }
 
-    void process(const ProcessArgs& args) override; // Função principal de processamento de áudio
+    // Destrutor: liberta planos FFTW
+    ~SpectroFXModule() {
+        fftw_destroy_plan(fftPlan);
+        fftw_destroy_plan(ifftPlan);
+    }
+
+    // Função principal de processamento de áudio
+    void process(const ProcessArgs& args) override;
 };

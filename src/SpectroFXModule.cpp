@@ -1,182 +1,152 @@
 #include "plugin.hpp"
 #include "SpectroFXModule.hpp"
+#include "SpectroFXWidget.hpp"
+#include <opencv2/opencv.hpp>
 
-// Função utilitária para limitar valores entre dois extremos
-template <typename T>
-T clamp(T v, T lo, T hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
-// --- Widget de visualização do espectrograma (painel gráfico) ---
-struct SpectrogramDisplay : Widget {
-    SpectroFXModule* module; // Ponteiro para o módulo associado
-
-    SpectrogramDisplay(SpectroFXModule* module) {
-        this->module = module;
-        // Define posição e tamanho do widget no painel (em mm)
-        box.pos = mm2px(Vec(20, 15));
-        box.size = mm2px(Vec(195, 98));
-    }
-
-    void draw(const DrawArgs& args) override {
-        if (!module)
-            return;
-        // Desenha a última linha do processedImage como espectro
-        nvgBeginPath(args.vg);
-        nvgMoveTo(args.vg, 0, box.size.y);
-        for (int i = 0; i < SPECTRO_WIDTH; i++) {
-            float mag = 0;
-            if (!module->processedImage.empty())
-                mag = module->processedImage.at<uchar>(SPECTRO_HEIGHT - 1, i) / 255.f;
-            float x = (float)i / (SPECTRO_WIDTH - 1) * box.size.x;
-            float y = box.size.y - mag * box.size.y;
-            nvgLineTo(args.vg, x, y);
-        }
-        nvgLineTo(args.vg, box.size.x, box.size.y);
-        nvgClosePath(args.vg);
-        nvgFillColor(args.vg, nvgRGB(50, 200, 255));
-        nvgFill(args.vg);
-    }
-};
-
-// --- Construtor: inicializa buffers, FFTW e janela Hanning ---
-SpectroFXModule::SpectroFXModule() {
-    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS); // Inicializa parâmetros básicos do módulo
-    configParam(EFFECT_TYPE_PARAM, 0.f, 3.f, 0.f, "Effect Type"); // Configura knob de efeito
-
-    // Cria planos FFTW para FFT e IFFT
-    fftPlan = fftw_plan_dft_r2c_1d(N, inputBuffer, fftOut, FFTW_ESTIMATE);
-    ifftPlan = fftw_plan_dft_c2r_1d(N, fftIn, outputBuffer, FFTW_ESTIMATE);
-
-    // Inicializa buffers de entrada, saída e magnitude
-    std::fill(inputBuffer, inputBuffer + N, 0.0);
-    std::fill(outputBuffer, outputBuffer + N, 0.0);
-    std::fill(magnitude, magnitude + SPECTRO_WIDTH, 0.0);
-
-    // Inicializa janela Hanning 
-    for (int i = 0; i < N; ++i)
-        hanning[i] = 0.5 - 0.5 * cos(2 * M_PI * i / (N - 1));
-
-    outputIndex = 0; // Posição inicial do buffer de saída
-    bufferIndex = 0; // Posição inicial do buffer de entrada
-}
-
-// --- Destrutor: Liberta planos FFTW ---
-SpectroFXModule::~SpectroFXModule() {
-    fftw_destroy_plan(fftPlan);
-    fftw_destroy_plan(ifftPlan);
-}
-
-// --- Função principal de processamento por bloco ---
+/**
+ * Função principal de processamento de áudio.
+ * Aplica FFT ao sinal de entrada, manipula o espectrograma com efeitos,
+ * reconstrói o áudio via IFFT e atualiza as saídas.
+ */
 void SpectroFXModule::process(const ProcessArgs& args) {
-    float in1 = inputs[AUDIO_INPUT_1].getVoltage(); // Lê amostra de áudio do input
+    // Lê a amostra de entrada
+    float in = inputs[AUDIO_INPUT].isConnected() ? inputs[AUDIO_INPUT].getVoltage() : 0.f;
+    // Envia sempre o input para a saída BYPASS
+    outputs[BYPASS_OUTPUT].setVoltage(in);
 
-    // Output 2: bypass puro (input direto, sample a sample)
-    outputs[AUDIO_OUTPUT_2].setVoltage(in1);
+    // Escreve a amostra no buffer circular de entrada
+    inputBuffer[bufferIndex] = in;
+    bufferIndex = (bufferIndex + 1) % N;
 
-    // Adiciona a amostra ao buffer circular de entrada
-    inputBuffer[bufferIndex] = static_cast<double>(in1);
-    bufferIndex++;
-
-    // Lê valor do knob de efeitos (param)
-    int effectType = static_cast<int>(params[EFFECT_TYPE_PARAM].getValue());
-
-    // Quando o buffer atinge N amostras, processa o bloco
-    if (bufferIndex == N) {
-        // Aplica janela Hanning ao bloco
-        double windowedBuffer[N];
-        for (int i = 0; i < N; ++i)
-            windowedBuffer[i] = inputBuffer[i] * hanning[i];
-
-        // Executa FFT real->complexo
-        fftw_execute_dft_r2c(fftPlan, windowedBuffer, fftOut);
-
-        // Calcula a magnitude dos bins válidos (0 ... SPECTRO_WIDTH-1)
-        for (int i = 0; i < SPECTRO_WIDTH; i++)
-            magnitude[i] = std::sqrt(fftOut[i][0] * fftOut[i][0] + fftOut[i][1] * fftOut[i][1]);
-
-        // Atualiza espectrograma (shift + insere nova linha de magnitudes)
-        cv::Mat newRow(1, SPECTRO_WIDTH, CV_8UC1);
-        for (int i = 0; i < SPECTRO_WIDTH; i++) {
-            double val = std::log(magnitude[i] + 1e-6) * 20.0; // Escala logarítmica
-            val = clamp(val, 0.0, 10.0);
-            newRow.at<uchar>(0, i) = static_cast<uchar>(val * 25.5); // Escala para [0,255]
-        }
-        spectrogramImage.rowRange(1, SPECTRO_HEIGHT).copyTo(spectrogramImage.rowRange(0, SPECTRO_HEIGHT - 1));
-        newRow.copyTo(spectrogramImage.row(SPECTRO_HEIGHT - 1));
-
-        // Aplica efeito OpenCV ou só clone (consoante o efeito)
-        switch (effectType) {
-            case 1:
-                cv::GaussianBlur(spectrogramImage, processedImage, cv::Size(7, 7), 1.5);
-                break;
-            case 2: {
-                cv::Mat kernel = (cv::Mat_<float>(3, 3) <<
-                     0, -1,  0,
-                    -1,  5, -1,
-                     0, -1,  0);
-                cv::filter2D(spectrogramImage, processedImage, -1, kernel);
-                break;
-            }
-            case 3:
-                cv::Laplacian(spectrogramImage, processedImage, CV_8U);
-                break;
-            default:
-                spectrogramImage.copyTo(processedImage);
-        }
-        // Garante tipo de imagem correto (8 bits por pixel)
-        if (processedImage.type() != CV_8UC1)
-            processedImage.convertTo(processedImage, CV_8UC1);
-
-        // Reconstrói espectro: magnitude manipulada + fase original 
-        for (int i = 0; i < SPECTRO_WIDTH; i++) {
-            double mag = static_cast<double>(processedImage.at<uchar>(SPECTRO_HEIGHT - 1, i)) / 255.0;
-            double phase = std::atan2(fftOut[i][1], fftOut[i][0]);
-            fftIn[i][0] = mag * std::cos(phase);
-            fftIn[i][1] = mag * std::sin(phase);
-        }
-
-        // Executa IFFT (complexo->real)
-        fftw_execute_dft_c2r(ifftPlan, fftIn, outputBuffer);
-
-        // Normaliza o resultado (FFTW não normaliza)
+    // Apenas processa o bloco FFT quando o buffer circular está cheio (N amostras)
+    if (bufferIndex == 0) {
+        // Preenche o buffer da FFTW com as amostras atuais
         for (int i = 0; i < N; i++)
-            outputBuffer[i] /= N;
+            input[i] = inputBuffer[i];
 
-        outputIndex = 0;   // Reinicia leitura do bloco de saída
-        bufferIndex = 0;   // Reinicia escrita no buffer de entrada
+        // Lê os valores dos knobs dos efeitos
+        float blurAmt     = params[BLUR_PARAM].getValue();
+        float sharpAmt    = params[SHARPEN_PARAM].getValue();
+        float edgeAmt     = params[EDGE_PARAM].getValue();
+        float embossAmt   = params[EMBOSS_PARAM].getValue();
+        float gateAmt     = params[GATE_PARAM].getValue();
+        float mirrorAmt   = params[MIRROR_PARAM].getValue();
+        float stretchAmt  = params[STRETCH_PARAM].getValue();
+
+        // Se TODOS os knobs estão a zero, faz bypass real (direto)
+        if (blurAmt == 0.f && sharpAmt == 0.f && edgeAmt == 0.f && embossAmt == 0.f &&
+            gateAmt == 0.f && mirrorAmt == 0.f && stretchAmt == 0.f) {
+            // Bypass: cópia direta do input para o buffer de saída FX
+            for (int i = 0; i < N; ++i)
+                processedBuffer[i] = inputBuffer[i];
+        } else {
+            // Processamento FFT/IFFT
+            fftw_execute(fftPlan);
+
+            // Extrai magnitude e fase para cada bin
+            cv::Mat mag(1, N/2+1, CV_32F), phase(1, N/2+1, CV_32F);
+            for (int i = 0; i < N/2+1; i++) {
+                float re = output[i][0];
+                float im = output[i][1];
+                mag.at<float>(0,i)   = std::sqrt(re*re + im*im);
+                phase.at<float>(0,i) = std::atan2(im, re);
+            }
+
+            // Guarda magnitude original para blends
+            cv::Mat origMag = mag.clone();
+
+            // --------- EFEITOS GRADUAIS ---------
+
+            // 1. Blur
+            if (blurAmt > 0.f)
+                cv::GaussianBlur(mag, mag, cv::Size(0,0), blurAmt * 12.0);
+
+            // 2. Sharpen
+            if (sharpAmt > 0.f) {
+                cv::Mat sharp;
+                cv::Mat kernel = (cv::Mat_<float>(3,3) <<
+                    0, -sharpAmt, 0,
+                    -sharpAmt, 1+4*sharpAmt, -sharpAmt,
+                    0, -sharpAmt, 0);
+                cv::filter2D(mag, sharp, -1, kernel);
+                mag = mag * (1.0f - sharpAmt) + sharp * sharpAmt;
+            }
+
+            // 3. Edge Enhance
+            if (edgeAmt > 0.f) {
+                cv::Mat edge;
+                cv::Sobel(mag, edge, CV_32F, 1, 1, 3);
+                mag = mag * (1.0f - edgeAmt) + edge * edgeAmt;
+            }
+
+            // 4. Emboss
+            if (embossAmt > 0.f) {
+                cv::Mat emboss;
+                cv::Mat kernel = (cv::Mat_<float>(3,3) <<
+                    -2, -1, 0,
+                    -1,  1, 1,
+                     0,  1, 2);
+                cv::filter2D(mag, emboss, -1, kernel);
+                mag = mag * (1.0f - embossAmt) + emboss * embossAmt;
+            }
+
+            // 5. Spectral Gate
+            float gateAmt = params[GATE_PARAM].getValue();
+            if (gateAmt > 0.f) {
+                double maxv;
+                cv::minMaxLoc(mag, nullptr, &maxv);
+                float threshold = gateAmt * maxv;
+                for (int i = 0; i < mag.cols; ++i) {
+                    float& v = mag.at<float>(0, i);
+                    if (v < threshold)
+                        v *= 1.f - gateAmt; // atenua bandas fracas
+                }
+            }
+
+            // 6. Mirror
+            if (mirrorAmt > 0.f) {
+                cv::Mat mirrored = mag.clone();
+                int n = mag.cols;
+                for (int i = 0; i < n/2; ++i) {
+                    float tmp = mirrored.at<float>(0,i);
+                    mirrored.at<float>(0,i) = mirrored.at<float>(0,n-1-i);
+                    mirrored.at<float>(0,n-1-i) = tmp;
+                }
+                mag = mag * (1.0f - mirrorAmt) + mirrored * mirrorAmt;
+            }
+
+            // 7. Spectral Stretch
+            float stretchAmt = params[STRETCH_PARAM].getValue();
+            if (std::abs(stretchAmt - 0.5f) > 1e-3) { // 0.5 = sem efeito
+                float factor = 0.5f + stretchAmt; // 0.5x a 1.5x
+                cv::Mat stretched;
+                cv::resize(mag, stretched, cv::Size(), factor, 1.0, cv::INTER_LINEAR);
+                cv::resize(stretched, mag, mag.size(), 0, 0, cv::INTER_LINEAR);
+            }
+
+            // --------- RECONSTRUÇÃO DO ÁUDIO ---------
+            // Recombina magnitude e fase e executa a IFFT
+            for (int i = 0; i < N/2+1; i++) {
+                float m = mag.at<float>(0,i);
+                float ph = phase.at<float>(0,i);
+                output[i][0] = m * std::cos(ph);
+                output[i][1] = m * std::sin(ph);
+            }
+            fftw_execute(ifftPlan);
+
+            // Normaliza e guarda no buffer de saída processada
+            for (int i = 0; i < N; ++i)
+                processedBuffer[i] = input[i] / N;
+        }
+        // Após processar um bloco, reinicia ponteiro de leitura
+        readPtr = 0;
     }
 
-    // Output 1: fornece sample a sample do bloco processado
-    if (outputIndex < N) {
-        outputs[AUDIO_OUTPUT_1].setVoltage(outputBuffer[outputIndex]);
-        outputIndex++;
-    } else {
-        outputs[AUDIO_OUTPUT_1].setVoltage(0.0f); // Zero se bloco acabou
-    }
+    // Lê o próximo sample do buffer processado e envia para a saída FX
+    float outProc = processedBuffer[readPtr];
+    outputs[PROCESSED_OUTPUT].setVoltage(outProc);
+    readPtr = (readPtr + 1) % N;
 }
 
-// --- Widget/interface do módulo ---
-struct SpectroFXModuleWidget : ModuleWidget {
-    SpectroFXModuleWidget(SpectroFXModule* module) {
-        setModule(module);
-        setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/SpectroFX.svg")));
-
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10, 30)), module, SpectroFXModule::AUDIO_INPUT_1));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10, 50)), module, SpectroFXModule::AUDIO_OUTPUT_1));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10, 90)), module, SpectroFXModule::AUDIO_OUTPUT_2));
-
-        // Botão para escolher efeito
-        addParam(createParamCentered<RoundBlackKnob>(
-            mm2px(Vec(10, 110)), module, SpectroFXModule::EFFECT_TYPE_PARAM));
-
-        // Widget do espectrograma (adiciona painel gráfico ao módulo)
-        SpectrogramDisplay* spectrogram = new SpectrogramDisplay(module);
-        addChild(spectrogram);
-    }
-};
-
-// Declaração do modelo do plugin para o VCV Rack
+// Regista o módulo na framework do VCV Rack
 Model* modelSpectroFXModule = createModel<SpectroFXModule, SpectroFXModuleWidget>("SpectroFX");

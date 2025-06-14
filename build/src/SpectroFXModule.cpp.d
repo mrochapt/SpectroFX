@@ -122,6 +122,7 @@ build/src/SpectroFXModule.cpp.o: src/SpectroFXModule.cpp src/plugin.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/digital.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/vumeter.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/convert.hpp src/SpectroFXModule.hpp \
+ src/SpectroFXWidget.hpp \
  C:/msys64/mingw64/include/opencv4/opencv2/opencv.hpp \
  C:/msys64/mingw64/include/opencv4/opencv2/opencv_modules.hpp \
  C:/msys64/mingw64/include/opencv4/opencv2/core.hpp \
@@ -363,6 +364,7 @@ C:\VCVDev\Rack-SDK/include/dsp/digital.hpp:
 C:\VCVDev\Rack-SDK/include/dsp/vumeter.hpp:
 C:\VCVDev\Rack-SDK/include/dsp/convert.hpp:
 src/SpectroFXModule.hpp:
+src/SpectroFXWidget.hpp:
 C:/msys64/mingw64/include/opencv4/opencv2/opencv.hpp:
 C:/msys64/mingw64/include/opencv4/opencv2/opencv_modules.hpp:
 C:/msys64/mingw64/include/opencv4/opencv2/core.hpp:
