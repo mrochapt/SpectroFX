@@ -4,10 +4,9 @@
 
 using namespace rack;
 
-/**
- * Widget para desenhar o espectrograma como gráfico.
- * Mostra a magnitude do espectro (FFT) em cada ciclo de janela.
- */
+
+// Widget para desenhar o espectrograma como gráfico.
+// Mostra a magnitude do espectro (FFT) em cada ciclo de janela.
 struct SpectrogramDisplay : Widget {
     SpectroFXModule* module;
     SpectrogramDisplay(SpectroFXModule* module) {
@@ -43,10 +42,9 @@ struct SpectrogramDisplay : Widget {
     }
 };
 
-/**
- * Widget do painel principal do módulo.
- * Adiciona os knobs, entradas/saídas e o espectrograma.
- */
+
+// Widget do painel principal do módulo.
+// Adiciona os knobs, entradas/saídas e o espectrograma.
 struct SpectroFXModuleWidget : ModuleWidget {
     SpectroFXModuleWidget(SpectroFXModule* module) {
         setModule(module);

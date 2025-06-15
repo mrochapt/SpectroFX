@@ -1,14 +1,11 @@
 #pragma once
-
 #include "rack.hpp"
 #include <fftw3.h>
 
 using namespace rack;
 
-/**
- * Classe principal do módulo SpectroFX.
- * Aplica vários efeitos espectrais (imagem) controlados por knobs graduais.
- */
+// Classe principal do módulo SpectroFX.
+// Aplica vários efeitos espectrais (imagem) controlados por knobs graduais.
 struct SpectroFXModule : Module {
     // Enumeração dos parâmetros de controlo (knobs)
     enum ParamIds {

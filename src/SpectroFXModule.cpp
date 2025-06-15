@@ -3,11 +3,10 @@
 #include "SpectroFXWidget.hpp"
 #include <opencv2/opencv.hpp>
 
-/**
- * Função principal de processamento de áudio.
- * Aplica FFT ao sinal de entrada, manipula o espectrograma com efeitos,
- * reconstrói o áudio via IFFT e atualiza as saídas.
- */
+
+// Função principal de processamento de áudio.
+// Aplica FFT ao sinal de entrada, manipula o espectrograma com efeitos,
+//reconstrói o áudio via IFFT e atualiza as saídas.
 void SpectroFXModule::process(const ProcessArgs& args) {
     // Lê a amostra de entrada
     float in = inputs[AUDIO_INPUT].isConnected() ? inputs[AUDIO_INPUT].getVoltage() : 0.f;
@@ -55,7 +54,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             // Guarda magnitude original para blends
             cv::Mat origMag = mag.clone();
 
-            // --------- EFEITOS GRADUAIS ---------
+            // --------- EFEITOS ---------
 
             // 1. Blur
             if (blurAmt > 0.f)
@@ -64,10 +63,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             // 2. Sharpen
             if (sharpAmt > 0.f) {
                 cv::Mat sharp;
-                cv::Mat kernel = (cv::Mat_<float>(3,3) <<
-                    0, -sharpAmt, 0,
-                    -sharpAmt, 1+4*sharpAmt, -sharpAmt,
-                    0, -sharpAmt, 0);
+                cv::Mat kernel = (cv::Mat_<float>(3,3) << 0, -sharpAmt, 0, -sharpAmt, 1+4*sharpAmt, -sharpAmt, 0, -sharpAmt, 0);
                 cv::filter2D(mag, sharp, -1, kernel);
                 mag = mag * (1.0f - sharpAmt) + sharp * sharpAmt;
             }
