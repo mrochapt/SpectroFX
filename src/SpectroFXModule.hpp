@@ -41,12 +41,13 @@ struct SpectroFXModule : Module {
     static const int N = 512;
 
     // Buffers para processamento FFT/IFFT
-    double input[N] = {0.0};                // Buffer de amostras para FFTW (entrada)
-    fftw_complex output[N / 2 + 1] = {};    // Buffer de saída FFTW (domínio da frequência)
-    double inputBuffer[N] = {0.0};          // Buffer circular para janela de entrada
-    double processedBuffer[N] = {0.0};      // Buffer circular para janela de saída
-    int bufferIndex = 0;                    // Posição atual no buffer circular
-    int readPtr = 0;                        // Ponteiro de leitura do output processado
+    double input[N] = {0.0};                    // Buffer de amostras para FFTW (entrada)
+    fftw_complex output[N / 2 + 1] = {};        // Buffer de saída FFTW (domínio da frequência)
+    double inputBuffer[N] = {0.0};              // Buffer circular para janela de entrada
+    double processedBuffer[N] = {0.0};          // Buffer circular para janela de saída
+    int bufferIndex = 0;                        // Posição atual no buffer circular
+    int readPtr = 0;                            // Ponteiro de leitura do output processado
+    float processedMagnitude[N/2 + 1] = {0.f};  // Guarda última magnitude com efeitos
 
     // Planos FFT/IFFT (fftw)
     fftw_plan fftPlan = nullptr;

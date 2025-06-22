@@ -38,6 +38,19 @@ void SpectroFXModule::process(const ProcessArgs& args) {
             // Bypass: cópia direta do input para o buffer de saída FX
             for (int i = 0; i < N; ++i)
                 processedBuffer[i] = inputBuffer[i];
+
+            // Garante que o espectrograma é actualizado mesmo em bypass
+            for (int i = 0; i < N; ++i)
+                input[i] = inputBuffer[i];
+
+            fftw_execute(fftPlan);
+
+            for (int i = 0; i < N / 2 + 1; ++i) {
+                float re = output[i][0];
+                float im = output[i][1];
+                processedMagnitude[i] = std::sqrt(re * re + im * im);
+            }
+
         } else {
             // Processamento FFT/IFFT
             fftw_execute(fftPlan);
@@ -120,6 +133,10 @@ void SpectroFXModule::process(const ProcessArgs& args) {
                 cv::resize(stretched, mag, mag.size(), 0, 0, cv::INTER_LINEAR);
             }
 
+            // mag é o cv::Mat com a magnitude processada
+            for (int i = 0; i < N / 2 + 1; ++i)
+                processedMagnitude[i] = mag.at<float>(0, i);
+
             // --------- RECONSTRUÇÃO DO ÁUDIO ---------
             // Recombina magnitude e fase e executa a IFFT
             for (int i = 0; i < N/2+1; i++) {
@@ -128,6 +145,7 @@ void SpectroFXModule::process(const ProcessArgs& args) {
                 output[i][0] = m * std::cos(ph);
                 output[i][1] = m * std::sin(ph);
             }
+
             fftw_execute(ifftPlan);
 
             // Normaliza e guarda no buffer de saída processada
