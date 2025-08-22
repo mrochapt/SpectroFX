@@ -121,7 +121,8 @@ build/src/plugin.cpp.o: src/plugin.cpp src/plugin.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/filter.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/digital.hpp \
  C:\VCVDev\Rack-SDK/include/dsp/vumeter.hpp \
- C:\VCVDev\Rack-SDK/include/dsp/convert.hpp src/SpectroFXModule.hpp
+ C:\VCVDev\Rack-SDK/include/dsp/convert.hpp src/SpectroFXModule.hpp \
+ src/PhaseEngine.hpp src/Mask2D.hpp
 src/plugin.hpp:
 C:\VCVDev\Rack-SDK/include/rack.hpp:
 C:\VCVDev\Rack-SDK/include/common.hpp:
@@ -248,3 +249,5 @@ C:\VCVDev\Rack-SDK/include/dsp/digital.hpp:
 C:\VCVDev\Rack-SDK/include/dsp/vumeter.hpp:
 C:\VCVDev\Rack-SDK/include/dsp/convert.hpp:
 src/SpectroFXModule.hpp:
+src/PhaseEngine.hpp:
+src/Mask2D.hpp:

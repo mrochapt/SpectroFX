@@ -11,7 +11,7 @@ FLAGS += -IC:/msys64/mingw64/include
 LDFLAGS += -LC:/msys64/mingw64/lib
 
 # LIBRARIES
-LDFLAGS += -lopencv_core -lopencv_imgproc -lfftw3
+LDFLAGS += -lopencv_core -lopencv_imgproc -lfftw3 -lfftw3_threads
 
 FLAGS += -std=c++17
 

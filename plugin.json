@@ -9,7 +9,7 @@
     {
       "slug": "SpectroFX",
       "name": "SpectroFX",
-      "description": "Espectrograma FFT com 2 entradas/saídas",
+      "description": "Espectrograma FFT com manipulacao de imagem",
       "tags": ["Visual", "Utility", "FFT"]
     }
   ]
