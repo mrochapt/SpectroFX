@@ -8,7 +8,7 @@ SpectroFX is a stereo VCV Rack module that treats the **magnitude spectrum like 
 
 Many classic image operators map beautifully onto spectral magnitude. With SpectroFX you can blur, sharpen, edge-enhance, emboss, mirror or stretch spectra—**per channel, with CV control**—and keep transients coherent via phase models designed for synthesis continuity. &#x20;
 
----
+
 
 ## Features
 
@@ -24,7 +24,7 @@ Many classic image operators map beautifully onto spectral magnitude. With Spect
 * **Live spectrogram UI**, panel drawn entirely in code (no SVG).&#x20;
 * **Stereo I/O:** BYPASS L/R (dry) and PROCESSED L/R (wet).&#x20;
 
----
+
 
 ## Signal Flow (DSP)
 
@@ -32,7 +32,7 @@ Many classic image operators map beautifully onto spectral magnitude. With Spect
 2. **FFTW** forward transform → **OpenCV** FX on magnitude → **phase engine** synthesizes complex spectrum → **IFFT**.&#x20;
 3. **Overlap-Add**, soft limiter, and DC-block for clean output.&#x20;
 
----
+
 
 ## Controls & I/O
 
@@ -46,7 +46,7 @@ Many classic image operators map beautifully onto spectral magnitude. With Spect
 
 **Quick patch:** Feed audio to **IN L/R**, monitor **PROC L/R**. Use the overlay to limit FX to a band (e.g., mids), then raise **SHARPEN** or add a touch of **BLUR** for tone shaping.&#x20;
 
----
+
 
 ## Build
 
@@ -65,9 +65,9 @@ cd SpectroFX
 make RACK_DIR=/path/to/Rack-SDK
 ```
 
-On success, Rack will discover a module named **“SpectroFX”** registered by the plugin at load time.&#x20;
+On success, VCV Rack will discover a module named **“SpectroFX”** registered by the plugin at load time.&#x20;
 
----
+
 
 ## Architecture Notes
 
@@ -76,27 +76,27 @@ On success, Rack will discover a module named **“SpectroFX”** registered by 
 * **UI** is drawn with NanoVG (no external SVG assets) and includes a heatmap-style spectrogram plus in-panel I/O groupings.&#x20;
 * **Performance:** FFTW thread pool is initialized once; plans use two threads. Soft-limiter and DC-block help keep levels sane.&#x20;
 
----
+
 
 ## Roadmap
 
 * Additional spectral operators and smarter mask painting tools
 * Quality-of-life UI refinements and presets
 
----
+
 
 ## Acknowledgments
 
 Built with **VCV Rack**, **FFTW**, and **OpenCV**. Thanks to the open-source communities behind these projects. (Implementation references in this repo point to the relevant files.)
 
 
----
+
 
 ## Contributing
 
 Issues and PRs are welcome—especially bug reports with minimal patches/recordings and platform details. For code changes, keep UI thread and audio thread responsibilities clearly separated (see `Mask2D` and the DSP pipeline for patterns). &#x20;
 
----
+
 
 ## Module ID
 
