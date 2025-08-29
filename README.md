@@ -2,7 +2,7 @@
 
 SpectroFX is a stereo VCV Rack module that treats the **magnitude spectrum like an image**, applies OpenCV-style operations to it, and then reconstructs audio using selectable phase engines (RAW, classic Phase-Vocoder, or PV-Lock). The UI shows a live spectrogram and a band-select overlay so you can confine processing to a frequency range in real time. &#x20;
 
----
+
 
 ## Why
 
