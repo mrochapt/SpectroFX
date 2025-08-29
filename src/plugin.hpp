@@ -4,8 +4,8 @@
 
 using namespace rack;
 
-// Declaração externa usada por vários ficheiros para aceder ao plugin
+// Instância de plugin visível globalmente (fornecida por `init()`).
 extern rack::Plugin* pluginInstance;
 
-// Registo do modelo principal (definido em plugin.cpp)
+// Modelo do módulo principal (definido em plugin.cpp).
 extern rack::Model* modelSpectroFXModule;
