@@ -28,7 +28,7 @@ Many classic image operators map beautifully onto spectral magnitude. With Spect
 
 ## Signal Flow (DSP)
 
-1. **STFT** with periodic √Hann, `N = 1024`, `H = N/2` (guaranteed COLA). Latency ≈ `N` samples.&#x20;
+1. **STFT** with periodic √Hann, `N = 1024`, `H = N/2` (guaranteed COLA(Constant OverLap-Add)). Latency ≈ `N` samples.&#x20;
 2. **FFTW** forward transform → **OpenCV** FX on magnitude → **phase engine** synthesizes complex spectrum → **IFFT**.&#x20;
 3. **Overlap-Add**, soft limiter, and DC-block for clean output.&#x20;
 
